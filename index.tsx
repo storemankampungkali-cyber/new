@@ -3,14 +3,24 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Shim process.env untuk mencegah crash di browser
+// Shim process.env untuk lingkungan browser
 if (typeof window !== 'undefined') {
-  (window as any).process = {
-    env: {
-      API_KEY: (import.meta as any).env?.VITE_API_KEY || (import.meta as any).env?.API_KEY || "",
-      VITE_GAS_URL: (import.meta as any).env?.VITE_GAS_URL || ""
-    }
-  };
+  // Inisialisasi objek jika belum ada
+  (window as any).process = (window as any).process || {};
+  (window as any).process.env = (window as any).process.env || {};
+  
+  const env = (window as any).process.env;
+  const metaEnv = (import.meta as any).env || {};
+  
+  // Mengambil variabel dari process.env (jika ada) atau import.meta.env (Vite)
+  // Mendukung prefiks VITE_ maupun tanpa prefiks untuk fleksibilitas
+  env.API_KEY = env.API_KEY || metaEnv.VITE_API_KEY || metaEnv.API_KEY || "";
+  env.VITE_GAS_URL = env.VITE_GAS_URL || metaEnv.VITE_GAS_URL || metaEnv.GAS_URL || "";
+  
+  // Log peringatan di console jika konfigurasi hilang
+  if (!env.VITE_GAS_URL) {
+    console.warn("ProStock Warning: VITE_GAS_URL tidak ditemukan di environment. Pastikan sudah ditambahkan di Vercel Settings.");
+  }
 }
 
 const rootElement = document.getElementById('root');
