@@ -15,55 +15,6 @@ const SHEETS = {
   LOGS: 'Logs'
 };
 
-function setupDatabase() {
-  const structure = {
-    [SHEETS.USERS]: ['id', 'username', 'name', 'role', 'password'],
-    [SHEETS.INVENTORY]: [
-      'id', 'name', 'category', 'stock', 'minStock', 
-      'defaultUnit', 'altUnit1', 'conv1', 'altUnit2', 'conv2', 'altUnit3', 'conv3', 
-      'initialStock', 'status'
-    ],
-    [SHEETS.SUPPLIERS]: ['id', 'name', 'contactPerson', 'phone', 'email', 'address'],
-    [SHEETS.TRANSACTIONS_IN]: [
-      'Timestamp', 'Tgl', 'NoSJ', 'Supplier', 'NoForm', 'NoPO', 
-      'Kode', 'Nama', 'QtyInput', 'SatuanInput', 'QtyDefault', 'SatuanDefault', 
-      'Keterangan', 'FotoUrl', 'User'
-    ],
-    [SHEETS.TRANSACTIONS_OUT]: [
-      'Timestamp', 'Tgl', 'KeteranganGlobal', 'Kode', 'Nama', 
-      'QtyInput', 'SatuanInput', 'QtyDefault', 'SatuanDefault', 
-      'StokSebelum', 'StokSesudah', 'User'
-    ],
-    [SHEETS.TRANSACTIONS_OPNAME]: ['id', 'date', 'items', 'timestamp', 'user'],
-    [SHEETS.LOGS]: ['timestamp', 'user', 'action', 'details']
-  };
-
-  Object.keys(structure).forEach(name => {
-    let sheet = SS.getSheetByName(name);
-    if (!sheet) {
-      sheet = SS.insertSheet(name);
-    }
-    sheet.clear();
-    sheet.getRange(1, 1, 1, structure[name].length).setValues([structure[name]]).setFontWeight('bold');
-    sheet.setFrozenRows(1);
-  });
-
-  const userSheet = SS.getSheetByName(SHEETS.USERS);
-  if (userSheet.getLastRow() === 1) {
-    userSheet.appendRow(['1', 'admin', 'Root Admin', 'ADMIN', 'admin123']);
-  }
-  
-  return "Database Optimized & Setup Complete!";
-}
-
-function getItemConversionFactor(item, unitName) {
-  if (!unitName || unitName === item.defaultUnit) return 1;
-  if (unitName === item.altUnit1) return Number(item.conv1) || 1;
-  if (unitName === item.altUnit2) return Number(item.conv2) || 1;
-  if (unitName === item.altUnit3) return Number(item.conv3) || 1;
-  return 1;
-}
-
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
@@ -81,8 +32,9 @@ function doPost(e) {
       case 'SAVE_STOCK_IN': response = handleStockIn(payload); break;
       case 'SAVE_STOCK_OUT': response = handleStockOut(payload); break;
       case 'GET_DASHBOARD_STATS': response = getDashboardStats(); break;
-      case 'GET_TRANSACTIONS': response = getAllTransactions(); break; // Baru: Untuk Ekspor
+      case 'GET_TRANSACTIONS': response = getAllTransactions(); break;
       case 'SEARCH_ITEMS': response = searchItems(payload.query); break;
+      case 'GET_LOGS': response = getTableData(SHEETS.LOGS); break;
       default: throw new Error("Action " + action + " not implemented.");
     }
     return createJsonResponse({ success: true, data: response });
@@ -97,32 +49,42 @@ function createJsonResponse(obj) {
 
 function getTableData(sheetName) {
   const sheet = SS.getSheetByName(sheetName);
+  if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
-  const headers = data[0];
+  
+  // Bersihkan header dari spasi yang tidak diinginkan
+  const headers = data[0].map(h => String(h).trim());
+  
   return data.slice(1).map(row => {
     let obj = {};
-    headers.forEach((h, i) => { obj[h] = row[i]; });
+    headers.forEach((h, i) => { 
+      if (h) obj[h] = row[i]; 
+    });
+    // Fallback untuk status jika kosong
+    if (sheetName === SHEETS.INVENTORY && (!obj.status || obj.status === '')) {
+      obj.status = 'ACTIVE';
+    }
     return obj;
   });
 }
 
-/**
- * Fungsi baru untuk mengambil semua transaksi (Masuk & Keluar) secara flat
- */
 function getAllTransactions() {
   const txIn = getTableData(SHEETS.TRANSACTIONS_IN).map(t => ({ ...t, type: 'IN' }));
   const txOut = getTableData(SHEETS.TRANSACTIONS_OUT).map(t => ({ ...t, type: 'OUT' }));
-  return [...txIn, ...txOut].sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+  return [...txIn, ...txOut].sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
 }
 
 function searchItems(query) {
   const items = getTableData(SHEETS.INVENTORY);
-  const q = query.toLowerCase();
-  return items.filter(item => 
-    item.status === 'ACTIVE' && 
-    (item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q))
-  );
+  const q = String(query || '').toLowerCase();
+  return items.filter(item => {
+    const name = String(item.name || '').toLowerCase();
+    const id = String(item.id || '').toLowerCase();
+    const status = String(item.status || 'ACTIVE').toUpperCase();
+    
+    return status === 'ACTIVE' && (name.includes(q) || id.includes(q));
+  });
 }
 
 function handleLogin(username, password) {
@@ -135,97 +97,26 @@ function handleLogin(username, password) {
 function upsertRow(sheetName, idKey, data, actor, label) {
   const sheet = SS.getSheetByName(sheetName);
   const values = sheet.getDataRange().getValues();
-  const headers = values[0];
+  const headers = values[0].map(h => String(h).trim());
   const idIdx = headers.indexOf(idKey);
-  const rowData = headers.map(h => data[h] !== undefined ? data[h] : '');
   
+  if (idIdx === -1) throw new Error("ID Key '" + idKey + "' tidak ditemukan di sheet.");
+
   let rowIndex = -1;
   if (data[idKey]) {
     for (let i = 1; i < values.length; i++) {
-      if (values[i][idIdx] == data[idKey]) { rowIndex = i + 1; break; }
+      if (String(values[i][idIdx]) === String(data[idKey])) { rowIndex = i + 1; break; }
     }
   } else {
     data[idKey] = Utilities.getUuid().split('-')[0].toUpperCase();
-    rowData[idIdx] = data[idKey];
   }
 
+  const rowData = headers.map(h => data[h] !== undefined ? data[h] : '');
   if (rowIndex > -1) sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowData]);
   else sheet.appendRow(rowData);
+  
+  logActivity(actor, "UPDATE_" + label, "ID: " + data[idKey]);
   return data;
-}
-
-function handleStockIn(tx) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
-    const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_IN);
-    const itemsMaster = getTableData(SHEETS.INVENTORY);
-    const invHeader = invSheet.getDataRange().getValues()[0];
-    const idIdx = invHeader.indexOf('id');
-    const stockIdx = invHeader.indexOf('stock');
-    const timestamp = new Date();
-
-    tx.items.forEach(it => {
-      const master = itemsMaster.find(m => m.id == it.itemId);
-      const factor = getItemConversionFactor(master, it.unit);
-      const deltaBase = Number(it.quantity) * factor;
-
-      // Update Stock
-      const invValues = invSheet.getDataRange().getValues();
-      for (let i = 1; i < invValues.length; i++) {
-        if (invValues[i][idIdx] == it.itemId) {
-          invSheet.getRange(i + 1, stockIdx + 1).setValue(Number(invValues[i][stockIdx]) + deltaBase);
-          break;
-        }
-      }
-
-      txSheet.appendRow([
-        timestamp, tx.date, tx.deliveryNote || '', tx.supplier || '', tx.noForm || '', tx.poNumber || '',
-        it.itemId, it.itemName, it.quantity, it.unit, deltaBase, master.defaultUnit, it.remarks || '', '', tx.user
-      ]);
-    });
-    return true;
-  } finally { lock.releaseLock(); }
-}
-
-function handleStockOut(tx) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
-  try {
-    const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
-    const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OUT);
-    const itemsMaster = getTableData(SHEETS.INVENTORY);
-    const invHeader = invSheet.getDataRange().getValues()[0];
-    const idIdx = invHeader.indexOf('id');
-    const stockIdx = invHeader.indexOf('stock');
-    const timestamp = new Date();
-
-    tx.items.forEach(it => {
-      const master = itemsMaster.find(m => m.id == it.itemId);
-      const factor = getItemConversionFactor(master, it.unit);
-      const deltaBase = Number(it.quantity) * factor;
-
-      let stokSebelum = 0;
-      let stokSesudah = 0;
-
-      const invValues = invSheet.getDataRange().getValues();
-      for (let i = 1; i < invValues.length; i++) {
-        if (invValues[i][idIdx] == it.itemId) {
-          stokSebelum = Number(invValues[i][stockIdx]);
-          stokSesudah = stokSebelum - deltaBase;
-          invSheet.getRange(i + 1, stockIdx + 1).setValue(stokSesudah);
-          break;
-        }
-      }
-
-      txSheet.appendRow([
-        timestamp, tx.date, tx.customer || '', it.itemId, it.itemName, it.quantity, it.unit, 
-        deltaBase, master.defaultUnit, stokSebelum, stokSesudah, tx.user
-      ]);
-    });
-    return true;
-  } finally { lock.releaseLock(); }
 }
 
 function getDashboardStats() {
@@ -233,11 +124,14 @@ function getDashboardStats() {
   const txIn = getTableData(SHEETS.TRANSACTIONS_IN);
   const txOut = getTableData(SHEETS.TRANSACTIONS_OUT);
   const today = new Date().toISOString().split('T')[0];
-  const lowStockList = inv.filter(i => i.status === 'ACTIVE' && Number(i.stock) <= Number(i.minStock));
+  
+  const activeItems = inv.filter(i => String(i.status || 'ACTIVE').toUpperCase() === 'ACTIVE');
+  const lowStockList = activeItems.filter(i => Number(i.stock || 0) <= Number(i.minStock || 0));
   
   const outCounts = {};
   txOut.forEach(t => {
-    outCounts[t.Nama] = (outCounts[t.Nama] || 0) + Number(t.QtyDefault); 
+    const name = t.Nama || t.itemName || 'Unknown';
+    outCounts[name] = (outCounts[name] || 0) + Number(t.QtyDefault || t.convertedQuantity || 0); 
   });
 
   const topItemsOut = Object.entries(outCounts)
@@ -246,17 +140,27 @@ function getDashboardStats() {
     .slice(0, 3);
 
   return {
-    totalItems: inv.filter(i => i.status === 'ACTIVE').length,
-    totalStock: inv.reduce((a, b) => a + Number(b.stock), 0),
+    totalItems: activeItems.length,
+    totalStock: activeItems.reduce((a, b) => a + Number(b.stock || 0), 0),
     lowStockItems: lowStockList.length,
-    transactionsInToday: txIn.filter(t => (t.Tgl instanceof Date ? t.Tgl.toISOString().split('T')[0] : t.Tgl) == today).length,
-    transactionsOutToday: txOut.filter(t => (t.Tgl instanceof Date ? t.Tgl.toISOString().split('T')[0] : t.Tgl) == today).length,
+    transactionsInToday: txIn.filter(t => {
+      const d = t.Tgl || t.date;
+      const dateStr = d instanceof Date ? d.toISOString().split('T')[0] : String(d).split('T')[0];
+      return dateStr === today;
+    }).length,
+    transactionsOutToday: txOut.filter(t => {
+      const d = t.Tgl || t.date;
+      const dateStr = d instanceof Date ? d.toISOString().split('T')[0] : String(d).split('T')[0];
+      return dateStr === today;
+    }).length,
     topItemsOut,
     lowStockList
   };
 }
 
 function logActivity(user, action, details) {
-  const sheet = SS.getSheetByName(SHEETS.LOGS);
-  sheet.appendRow([new Date(), user, action, String(details)]);
+  try {
+    const sheet = SS.getSheetByName(SHEETS.LOGS);
+    if (sheet) sheet.appendRow([new Date(), user, action, String(details)]);
+  } catch(e) {}
 }
