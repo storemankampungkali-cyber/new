@@ -1,7 +1,7 @@
 
 /**
  * ProStock Enterprise - Google Apps Script Backend API
- * Performance Optimized Version
+ * Full Version with CRUD & Stock Logic
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
@@ -28,9 +28,14 @@ function doPost(e) {
       case 'UPDATE_ITEM': response = upsertRow(SHEETS.INVENTORY, 'id', payload.item, payload.actor, 'ITEM'); break;
       case 'DELETE_ITEM': response = deleteRow(SHEETS.INVENTORY, 'id', payload.id, payload.actor, 'ITEM'); break;
       case 'GET_SUPPLIERS': response = getTableData(SHEETS.SUPPLIERS); break;
+      case 'UPDATE_SUPPLIER': response = upsertRow(SHEETS.SUPPLIERS, 'id', payload.supplier, 'Admin', 'SUPPLIER'); break;
+      case 'DELETE_SUPPLIER': response = deleteRow(SHEETS.SUPPLIERS, 'id', payload.id, 'Admin', 'SUPPLIER'); break;
       case 'GET_USERS': response = getTableData(SHEETS.USERS); break;
+      case 'UPDATE_USER': response = upsertRow(SHEETS.USERS, 'id', payload.user, payload.actor, 'USER'); break;
+      case 'DELETE_USER': response = deleteRow(SHEETS.USERS, 'id', payload.id, payload.actor, 'USER'); break;
       case 'SAVE_STOCK_IN': response = handleStockIn(payload); break;
       case 'SAVE_STOCK_OUT': response = handleStockOut(payload); break;
+      case 'SAVE_OPNAME': response = handleStockOpname(payload); break;
       case 'GET_DASHBOARD_STATS': response = getDashboardStats(); break;
       case 'GET_TRANSACTIONS': response = getAllTransactions(); break;
       case 'SEARCH_ITEMS': response = searchItems(payload.query); break;
@@ -53,7 +58,6 @@ function getTableData(sheetName) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
   
-  // Bersihkan header dari spasi yang tidak diinginkan
   const headers = data[0].map(h => String(h).trim());
   
   return data.slice(1).map(row => {
@@ -61,37 +65,8 @@ function getTableData(sheetName) {
     headers.forEach((h, i) => { 
       if (h) obj[h] = row[i]; 
     });
-    // Fallback untuk status jika kosong
-    if (sheetName === SHEETS.INVENTORY && (!obj.status || obj.status === '')) {
-      obj.status = 'ACTIVE';
-    }
     return obj;
   });
-}
-
-function getAllTransactions() {
-  const txIn = getTableData(SHEETS.TRANSACTIONS_IN).map(t => ({ ...t, type: 'IN' }));
-  const txOut = getTableData(SHEETS.TRANSACTIONS_OUT).map(t => ({ ...t, type: 'OUT' }));
-  return [...txIn, ...txOut].sort((a, b) => new Date(b.Timestamp || 0) - new Date(a.Timestamp || 0));
-}
-
-function searchItems(query) {
-  const items = getTableData(SHEETS.INVENTORY);
-  const q = String(query || '').toLowerCase();
-  return items.filter(item => {
-    const name = String(item.name || '').toLowerCase();
-    const id = String(item.id || '').toLowerCase();
-    const status = String(item.status || 'ACTIVE').toUpperCase();
-    
-    return status === 'ACTIVE' && (name.includes(q) || id.includes(q));
-  });
-}
-
-function handleLogin(username, password) {
-  const users = getTableData(SHEETS.USERS);
-  const user = users.find(u => u.username === username && u.password === password);
-  if (!user) throw new Error("Kredensial salah.");
-  return { id: user.id, username: user.username, name: user.name, role: user.role };
 }
 
 function upsertRow(sheetName, idKey, data, actor, label) {
@@ -100,7 +75,7 @@ function upsertRow(sheetName, idKey, data, actor, label) {
   const headers = values[0].map(h => String(h).trim());
   const idIdx = headers.indexOf(idKey);
   
-  if (idIdx === -1) throw new Error("ID Key '" + idKey + "' tidak ditemukan di sheet.");
+  if (idIdx === -1) throw new Error("ID Key '" + idKey + "' tidak ditemukan di sheet " + sheetName);
 
   let rowIndex = -1;
   if (data[idKey]) {
@@ -112,11 +87,181 @@ function upsertRow(sheetName, idKey, data, actor, label) {
   }
 
   const rowData = headers.map(h => data[h] !== undefined ? data[h] : '');
-  if (rowIndex > -1) sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowData]);
-  else sheet.appendRow(rowData);
+  if (rowIndex > -1) {
+    sheet.getRange(rowIndex, 1, 1, headers.length).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
   
-  logActivity(actor, "UPDATE_" + label, "ID: " + data[idKey]);
+  logActivity(actor || 'System', "UPSERT_" + label, "ID: " + data[idKey]);
   return data;
+}
+
+function deleteRow(sheetName, idKey, idValue, actor, label) {
+  const sheet = SS.getSheetByName(sheetName);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const idIdx = headers.indexOf(idKey);
+  
+  if (idIdx === -1) throw new Error("ID Key '" + idKey + "' tidak ditemukan.");
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idIdx]) === String(idValue)) {
+      sheet.deleteRow(i + 1);
+      logActivity(actor || 'System', "DELETE_" + label, "ID: " + idValue);
+      return true;
+    }
+  }
+  throw new Error("Data dengan ID " + idValue + " tidak ditemukan.");
+}
+
+function handleStockIn(payload) {
+  const sheet = SS.getSheetByName(SHEETS.TRANSACTIONS_IN);
+  const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
+  const timestamp = new Date();
+
+  payload.items.forEach(item => {
+    // 1. Simpan ke Log Transaksi Masuk
+    sheet.appendRow([
+      timestamp, 
+      payload.date, 
+      payload.supplier, 
+      payload.noForm, 
+      payload.poNumber, 
+      payload.deliveryNote,
+      item.itemId, 
+      item.itemName, 
+      item.quantity, 
+      item.unit, 
+      item.convertedQuantity, 
+      item.remarks,
+      payload.user
+    ]);
+
+    // 2. Update Stok di Inventory
+    updateInventoryStock(item.itemId, item.convertedQuantity, 'ADD');
+  });
+
+  logActivity(payload.user, "STOCK_IN", "Form: " + payload.noForm);
+  return true;
+}
+
+function handleStockOut(payload) {
+  const sheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OUT);
+  const timestamp = new Date();
+
+  payload.items.forEach(item => {
+    sheet.appendRow([
+      timestamp, 
+      payload.date, 
+      payload.customer, 
+      item.itemId, 
+      item.itemName, 
+      item.quantity, 
+      item.unit, 
+      item.convertedQuantity, 
+      item.remarks,
+      payload.user
+    ]);
+
+    updateInventoryStock(item.itemId, item.convertedQuantity, 'SUBTRACT');
+  });
+
+  logActivity(payload.user, "STOCK_OUT", "Note: " + payload.customer);
+  return true;
+}
+
+function updateInventoryStock(itemId, qty, operation) {
+  const sheet = SS.getSheetByName(SHEETS.INVENTORY);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const idIdx = headers.indexOf('id');
+  const stockIdx = headers.indexOf('stock');
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idIdx]) === String(itemId)) {
+      let currentStock = Number(values[i][stockIdx] || 0);
+      let newStock = operation === 'ADD' ? currentStock + Number(qty) : currentStock - Number(qty);
+      sheet.getRange(i + 1, stockIdx + 1).setValue(newStock);
+      return;
+    }
+  }
+}
+
+function handleStockOpname(payload) {
+  const sheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OPNAME);
+  const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
+  const timestamp = new Date();
+
+  payload.items.forEach(item => {
+    sheet.appendRow([
+      timestamp, 
+      payload.date, 
+      item.itemId, 
+      item.itemName, 
+      item.systemStock, 
+      item.physicalStock, 
+      item.difference, 
+      item.remarks,
+      payload.user
+    ]);
+
+    // Hard reset stock ke nilai fisik
+    setInventoryStock(item.itemId, item.physicalStock);
+  });
+  return true;
+}
+
+function setInventoryStock(itemId, exactQty) {
+  const sheet = SS.getSheetByName(SHEETS.INVENTORY);
+  const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const idIdx = headers.indexOf('id');
+  const stockIdx = headers.indexOf('stock');
+
+  for (let i = 1; i < values.length; i++) {
+    if (String(values[i][idIdx]) === String(itemId)) {
+      sheet.getRange(i + 1, stockIdx + 1).setValue(exactQty);
+      return;
+    }
+  }
+}
+
+function handleLogin(username, password) {
+  const users = getTableData(SHEETS.USERS);
+  const user = users.find(u => u.username === username && u.password === password);
+  if (!user) throw new Error("Username atau Password salah.");
+  return { id: user.id, username: user.username, name: user.name, role: user.role };
+}
+
+function getAllTransactions() {
+  const txIn = getTableData(SHEETS.TRANSACTIONS_IN).map(t => ({ 
+    ...t, 
+    type: 'IN', 
+    Timestamp: t.Timestamp || t.timestamp,
+    Kode: t.itemId || t.item_id,
+    Nama: t.itemName || t.item_name,
+    QtyDefault: t.convertedQuantity || t.converted_qty
+  }));
+  const txOut = getTableData(SHEETS.TRANSACTIONS_OUT).map(t => ({ 
+    ...t, 
+    type: 'OUT', 
+    Timestamp: t.Timestamp || t.timestamp,
+    Kode: t.itemId || t.item_id,
+    Nama: t.itemName || t.item_name,
+    QtyDefault: t.convertedQuantity || t.converted_qty
+  }));
+  return [...txIn, ...txOut].sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+}
+
+function searchItems(query) {
+  const items = getTableData(SHEETS.INVENTORY);
+  const q = String(query || '').toLowerCase();
+  return items.filter(item => {
+    const name = String(item.name || '').toLowerCase();
+    const id = String(item.id || '').toLowerCase();
+    return (name.includes(q) || id.includes(q)) && String(item.status).toUpperCase() === 'ACTIVE';
+  });
 }
 
 function getDashboardStats() {
@@ -125,13 +270,14 @@ function getDashboardStats() {
   const txOut = getTableData(SHEETS.TRANSACTIONS_OUT);
   const today = new Date().toISOString().split('T')[0];
   
-  const activeItems = inv.filter(i => String(i.status || 'ACTIVE').toUpperCase() === 'ACTIVE');
+  const activeItems = inv.filter(i => String(i.status).toUpperCase() === 'ACTIVE');
   const lowStockList = activeItems.filter(i => Number(i.stock || 0) <= Number(i.minStock || 0));
   
   const outCounts = {};
   txOut.forEach(t => {
-    const name = t.Nama || t.itemName || 'Unknown';
-    outCounts[name] = (outCounts[name] || 0) + Number(t.QtyDefault || t.convertedQuantity || 0); 
+    const name = t.itemName || t.Nama || 'Unknown';
+    const qty = Number(t.convertedQuantity || t.QtyDefault || 0);
+    outCounts[name] = (outCounts[name] || 0) + qty;
   });
 
   const topItemsOut = Object.entries(outCounts)
@@ -143,16 +289,8 @@ function getDashboardStats() {
     totalItems: activeItems.length,
     totalStock: activeItems.reduce((a, b) => a + Number(b.stock || 0), 0),
     lowStockItems: lowStockList.length,
-    transactionsInToday: txIn.filter(t => {
-      const d = t.Tgl || t.date;
-      const dateStr = d instanceof Date ? d.toISOString().split('T')[0] : String(d).split('T')[0];
-      return dateStr === today;
-    }).length,
-    transactionsOutToday: txOut.filter(t => {
-      const d = t.Tgl || t.date;
-      const dateStr = d instanceof Date ? d.toISOString().split('T')[0] : String(d).split('T')[0];
-      return dateStr === today;
-    }).length,
+    transactionsInToday: txIn.filter(t => String(t.date || t.Tgl).includes(today)).length,
+    transactionsOutToday: txOut.filter(t => String(t.date || t.Tgl).includes(today)).length,
     topItemsOut,
     lowStockList
   };
