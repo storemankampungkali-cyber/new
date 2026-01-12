@@ -1,26 +1,70 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { InventoryItem, UserRole } from '../types';
 import { gasService } from '../services/gasService';
 import { useNotification, useData } from '../App';
+import { useDebounce } from '../hooks/useDebounce';
 
 interface InventoryListProps {
   userRole: UserRole;
 }
 
 const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
-  const { inventory, loading, refreshData } = useData();
+  const { inventory, refreshData } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Partial<InventoryItem> | null>(null);
   const { notify } = useNotification();
 
+  // Debouncing & Server-Side Search State
+  const debouncedSearch = useDebounce(searchTerm, 500);
+  const [serverItems, setServerItems] = useState<InventoryItem[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  
+  // Cache Management
+  const searchCache = useRef<Map<string, InventoryItem[]>>(new Map());
+
+  // Handle server-side search with caching
+  useEffect(() => {
+    const performSearch = async () => {
+      // Jika kosong, kembalikan ke list utama (inventory dari context)
+      if (!debouncedSearch.trim()) {
+        setServerItems(null);
+        return;
+      }
+
+      const query = debouncedSearch.toLowerCase().trim();
+
+      // Cek Cache
+      if (searchCache.current.has(query)) {
+        setServerItems(searchCache.current.get(query) || []);
+        return;
+      }
+
+      setIsSearching(true);
+      try {
+        const results = await gasService.searchItems(query);
+        // Simpan ke Cache
+        searchCache.current.set(query, results);
+        setServerItems(results);
+      } catch (err: any) {
+        notify('Search failed: ' + err.message, 'error');
+      } finally {
+        setIsSearching(false);
+      }
+    };
+
+    performSearch();
+  }, [debouncedSearch, notify]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingItem && editingItem.name && editingItem.sku) {
+    if (editingItem && editingItem.name) {
       try {
         await gasService.updateInventoryItem(editingItem as InventoryItem, 'Admin');
         setIsModalOpen(false);
+        // Clear cache karena data master berubah
+        searchCache.current.clear();
         refreshData();
         notify(`Item ${editingItem.id ? 'updated' : 'created'} successfully`, 'success');
       } catch (err: any) {
@@ -33,6 +77,8 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
     if (confirm('Verify: Permanently delete this logistics node?')) {
       try {
         await gasService.deleteInventoryItem(id, 'Admin');
+        // Clear cache karena data master berubah
+        searchCache.current.clear();
         refreshData();
         notify('Item removed from inventory', 'warning');
       } catch (err: any) {
@@ -41,13 +87,10 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
     }
   };
 
-  const filteredItems = useMemo(() => {
-    return inventory.filter(item => 
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.sku.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.category.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [inventory, searchTerm]);
+  // Gunakan hasil server jika sedang mencari, jika tidak gunakan list inventory utama
+  const itemsToShow = useMemo(() => {
+    return serverItems !== null ? serverItems : inventory;
+  }, [serverItems, inventory]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -55,17 +98,26 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
         <div className="relative w-full md:w-[400px] group">
           <input
             type="text"
-            placeholder="Search SKU, Name, Category..."
-            className="w-full pl-12 pr-6 py-4 bg-slate-900/50 border border-white/5 rounded-[1.5rem] focus:ring-4 focus:ring-indigo-500/20 outline-none shadow-xl text-white transition-all placeholder-slate-700 font-medium"
+            placeholder="Search Name or Category..."
+            className={`w-full pl-12 pr-12 py-4 bg-slate-900/50 border rounded-[1.5rem] focus:ring-4 focus:ring-indigo-500/20 outline-none shadow-xl text-white transition-all placeholder-slate-700 font-medium ${isSearching ? 'border-indigo-500/30' : 'border-white/5'}`}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <svg className="w-6 h-6 absolute left-4 top-4 text-slate-600 group-focus-within:text-indigo-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          <div className="absolute left-4 top-4 text-slate-600 group-focus-within:text-indigo-400 transition-colors">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
+          
+          {/* Loading Indicator for Search */}
+          <div className="absolute right-4 top-4">
+            {isSearching && (
+              <div className="w-6 h-6 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
+            )}
+          </div>
         </div>
         
         {userRole === UserRole.ADMIN && (
           <button 
-            onClick={() => { setEditingItem({ stock: 0, initialStock: 0, minStock: 0, price: 0, defaultUnit: 'Pcs', status: 'ACTIVE' }); setIsModalOpen(true); }}
+            onClick={() => { setEditingItem({ stock: 0, initialStock: 0, minStock: 0, defaultUnit: 'Pcs', status: 'ACTIVE' }); setIsModalOpen(true); }}
             className="w-full md:w-auto px-10 py-4 bg-indigo-600 text-white rounded-[1.5rem] hover:bg-indigo-500 shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 font-bold"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
@@ -79,7 +131,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-white/5 border-b border-white/5">
-                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Resource Profile</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Resource Name</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Classification</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Quantities</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Status</th>
@@ -87,15 +139,15 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.03]">
-              {loading ? (
+              {isSearching && itemsToShow.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-8 py-20 text-center text-slate-500 font-bold uppercase tracking-widest animate-pulse">Syncing Master Nodes...</td>
+                  <td colSpan={5} className="px-8 py-20 text-center text-slate-500 font-bold uppercase tracking-widest animate-pulse">Consulting Global Ledger...</td>
                 </tr>
-              ) : filteredItems.length > 0 ? filteredItems.map((item) => (
+              ) : itemsToShow.length > 0 ? itemsToShow.map((item) => (
                 <tr key={item.id} className={`hover:bg-white/[0.02] transition-colors group ${item.status === 'INACTIVE' ? 'opacity-50' : ''}`}>
                   <td className="px-8 py-6">
                     <div className="font-bold text-white group-hover:text-indigo-400 transition-colors">{item.name}</div>
-                    <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase mt-1">SKU: {item.sku}</div>
+                    <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase mt-1">ID: {item.id}</div>
                   </td>
                   <td className="px-8 py-6">
                     <span className="px-3 py-1 bg-slate-900 text-slate-400 rounded-lg text-[9px] font-black uppercase tracking-tighter border border-white/5 group-hover:border-indigo-500/20 transition-all">
@@ -148,26 +200,15 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
               {editingItem?.id ? 'Adjust Profile' : 'Register Node'}
             </h3>
             <form onSubmit={handleSave} className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nama Barang</label>
-                  <input
-                    required
-                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-medium"
-                    placeholder="Contoh: Kabel Power"
-                    value={editingItem?.name || ''}
-                    onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">SKU / Kode</label>
-                  <input
-                    required
-                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white uppercase font-black tracking-widest"
-                    value={editingItem?.sku || ''}
-                    onChange={(e) => setEditingItem({ ...editingItem, sku: e.target.value })}
-                  />
-                </div>
+              <div className="space-y-2">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nama Barang</label>
+                <input
+                  required
+                  className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-medium"
+                  placeholder="Contoh: Kabel Power"
+                  value={editingItem?.name || ''}
+                  onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-6">
@@ -237,7 +278,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-6">
+              <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Stok Awal</label>
                   <input
@@ -256,22 +297,13 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                     onChange={(e) => setEditingItem({ ...editingItem, minStock: parseFloat(e.target.value) })}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Harga (USD)</label>
-                  <input
-                    type="number"
-                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-black"
-                    value={editingItem?.price || 0}
-                    onChange={(e) => setEditingItem({ ...editingItem, price: parseFloat(e.target.value) })}
-                  />
-                </div>
               </div>
               
               <div className="flex gap-4 pt-8">
                 <button 
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 py-4 border border-white/10 text-slate-500 rounded-3xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/5 transition-all"
+                  className="flex-1 py-4 border border-white/10 text-slate-400 rounded-3xl font-black text-[10px] uppercase tracking-[0.2em] hover:bg-white/5 transition-all"
                 >
                   Terminate
                 </button>

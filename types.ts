@@ -20,14 +20,12 @@ export interface UnitOption {
 
 export interface InventoryItem {
   id: string;
-  sku: string;
   name: string;
   category: string;
   stock: number;
   minStock: number;
-  price: number;
   defaultUnit: string;
-  // New Structure
+  // Satuan alternatif
   altUnit1?: string;
   conv1?: number;
   altUnit2?: string;

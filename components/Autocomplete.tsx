@@ -161,7 +161,7 @@ const Autocomplete = forwardRef<AutocompleteHandle, AutocompleteProps>(({ onSele
             >
               <div>
                 <div className="font-bold text-sm group-hover/item:text-indigo-400 transition-colors">{item.name}</div>
-                <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">SKU: {item.sku}</div>
+                <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">ID: {item.id}</div>
               </div>
               <div className="text-right">
                 <div className="text-xs font-black text-slate-200">{item.stock} {item.defaultUnit}</div>

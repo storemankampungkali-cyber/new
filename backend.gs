@@ -1,6 +1,7 @@
 
 /**
  * ProStock Enterprise - Google Apps Script Backend API
+ * Robust Unit Conversion System Implementation
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
@@ -18,7 +19,7 @@ function setupDatabase() {
   const structure = {
     [SHEETS.USERS]: ['id', 'username', 'name', 'role', 'password'],
     [SHEETS.INVENTORY]: [
-      'id', 'sku', 'name', 'category', 'stock', 'minStock', 'price', 
+      'id', 'name', 'category', 'stock', 'minStock', 
       'defaultUnit', 'altUnit1', 'conv1', 'altUnit2', 'conv2', 'altUnit3', 'conv3', 
       'initialStock', 'status'
     ],
@@ -44,7 +45,18 @@ function setupDatabase() {
     userSheet.appendRow(['1', 'admin', 'Root Admin', 'ADMIN', 'admin123']);
   }
   
-  return "Database Setup Updated with Multi-Unit Support!";
+  return "Database Setup Updated!";
+}
+
+/**
+ * Helper: Menghitung faktor konversi berdasarkan unit yang dipilih
+ */
+function getItemConversionFactor(item, unitName) {
+  if (!unitName || unitName === item.defaultUnit) return 1;
+  if (unitName === item.altUnit1) return Number(item.conv1) || 1;
+  if (unitName === item.altUnit2) return Number(item.conv2) || 1;
+  if (unitName === item.altUnit3) return Number(item.conv3) || 1;
+  return 1; // Fallback
 }
 
 function doPost(e) {
@@ -105,10 +117,8 @@ function searchItems(query) {
   const items = getTableData(SHEETS.INVENTORY);
   const q = query.toLowerCase();
   return items.filter(item => 
-    item.status === 'ACTIVE' && (
-      item.name.toLowerCase().includes(q) || 
-      item.sku.toLowerCase().includes(q)
-    )
+    item.status === 'ACTIVE' && 
+    item.name.toLowerCase().includes(q)
   );
 }
 
@@ -174,19 +184,30 @@ function handleStockIn(tx) {
   lock.waitLock(10000);
   try {
     const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
-    const invData = invSheet.getDataRange().getValues();
-    const headers = invData[0];
-    const idIdx = headers.indexOf('id');
-    const stockIdx = headers.indexOf('stock');
+    const invRaw = invSheet.getDataRange().getValues();
+    const invHeader = invRaw[0];
+    const itemsMaster = getTableData(SHEETS.INVENTORY);
+    
+    const idIdx = invHeader.indexOf('id');
+    const stockIdx = invHeader.indexOf('stock');
+
     tx.items.forEach(it => {
-      for (let i = 1; i < invData.length; i++) {
-        if (invData[i][idIdx] == it.itemId) {
-          const newStock = Number(invData[i][stockIdx]) + Number(it.convertedQuantity);
-          invSheet.getRange(i + 1, stockIdx + 1).setValue(newStock);
+      const master = itemsMaster.find(m => m.id == it.itemId);
+      if (!master) throw new Error(`Item ${it.itemName} not found in master.`);
+      
+      const factor = getItemConversionFactor(master, it.unit);
+      const deltaBase = Number(it.quantity) * factor;
+
+      // Update Stock in Sheet
+      for (let i = 1; i < invRaw.length; i++) {
+        if (invRaw[i][idIdx] == it.itemId) {
+          const currentStock = Number(invRaw[i][stockIdx]);
+          invSheet.getRange(i + 1, stockIdx + 1).setValue(currentStock + deltaBase);
           break;
         }
       }
     });
+
     const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_IN);
     txSheet.appendRow(['TXI-' + Date.now(), tx.date, tx.supplier, tx.poNumber, tx.deliveryNote, JSON.stringify(tx.items), JSON.stringify(tx.photos || []), new Date(), tx.user]);
     logActivity(tx.user, 'STOCK_IN', tx.poNumber);
@@ -199,20 +220,30 @@ function handleStockOut(tx) {
   lock.waitLock(10000);
   try {
     const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
-    const invData = invSheet.getDataRange().getValues();
-    const headers = invData[0];
-    const idIdx = headers.indexOf('id');
-    const stockIdx = headers.indexOf('stock');
+    const invRaw = invSheet.getDataRange().getValues();
+    const invHeader = invRaw[0];
+    const itemsMaster = getTableData(SHEETS.INVENTORY);
+    
+    const idIdx = invHeader.indexOf('id');
+    const stockIdx = invHeader.indexOf('stock');
+
     tx.items.forEach(it => {
-      for (let i = 1; i < invData.length; i++) {
-        if (invData[i][idIdx] == it.itemId) {
-          const current = Number(invData[i][stockIdx]);
-          if (current < it.convertedQuantity) throw new Error("Stock insufficient for " + it.itemName);
-          invSheet.getRange(i + 1, stockIdx + 1).setValue(current - Number(it.convertedQuantity));
+      const master = itemsMaster.find(m => m.id == it.itemId);
+      if (!master) throw new Error(`Item ${it.itemName} not found.`);
+
+      const factor = getItemConversionFactor(master, it.unit);
+      const deltaBase = Number(it.quantity) * factor;
+
+      for (let i = 1; i < invRaw.length; i++) {
+        if (invRaw[i][idIdx] == it.itemId) {
+          const currentStock = Number(invRaw[i][stockIdx]);
+          if (currentStock < deltaBase) throw new Error(`Insufficient stock for ${it.itemName}. Req: ${deltaBase}, Avail: ${currentStock}`);
+          invSheet.getRange(i + 1, stockIdx + 1).setValue(currentStock - deltaBase);
           break;
         }
       }
     });
+
     const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OUT);
     txSheet.appendRow(['TXO-' + Date.now(), tx.date, tx.customer, JSON.stringify(tx.items), new Date(), tx.user]);
     logActivity(tx.user, 'STOCK_OUT', tx.customer);
@@ -221,22 +252,37 @@ function handleStockOut(tx) {
 }
 
 function handleOpname(op) {
-  const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
-  const invData = invSheet.getDataRange().getValues();
-  const idIdx = invData[0].indexOf('id');
-  const stockIdx = invData[0].indexOf('stock');
-  op.items.forEach(it => {
-    for (let i = 1; i < invData.length; i++) {
-      if (invData[i][idIdx] == it.itemId) {
-        invSheet.getRange(i + 1, stockIdx + 1).setValue(Number(it.physicalStock));
-        break;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const invSheet = SS.getSheetByName(SHEETS.INVENTORY);
+    const invRaw = invSheet.getDataRange().getValues();
+    const invHeader = invRaw[0];
+    const itemsMaster = getTableData(SHEETS.INVENTORY);
+    
+    const idIdx = invHeader.indexOf('id');
+    const stockIdx = invHeader.indexOf('stock');
+
+    op.items.forEach(it => {
+      const master = itemsMaster.find(m => m.id == it.itemId);
+      if (!master) throw new Error(`Item ${it.itemName} not found.`);
+
+      const factor = getItemConversionFactor(master, it.unit);
+      const physicalStockBase = Number(it.quantity) * factor;
+
+      for (let i = 1; i < invRaw.length; i++) {
+        if (invRaw[i][idIdx] == it.itemId) {
+          invSheet.getRange(i + 1, stockIdx + 1).setValue(physicalStockBase);
+          break;
+        }
       }
-    }
-  });
-  const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OPNAME);
-  txSheet.appendRow(['SOP-' + Date.now(), op.date, JSON.stringify(op.items), new Date(), op.user]);
-  logActivity(op.user, 'OPNAME', op.date);
-  return true;
+    });
+
+    const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OPNAME);
+    txSheet.appendRow(['SOP-' + Date.now(), op.date, JSON.stringify(op.items), new Date(), op.user]);
+    logActivity(op.user, 'OPNAME', op.date);
+    return true;
+  } finally { lock.releaseLock(); }
 }
 
 function getDashboardStats() {
@@ -245,12 +291,20 @@ function getDashboardStats() {
   const txOut = getTableData(SHEETS.TRANSACTIONS_OUT);
   const today = new Date().toISOString().split('T')[0];
   const lowStockList = inv.filter(i => i.status === 'ACTIVE' && i.stock <= i.minStock);
+  
   const outCounts = {};
   txOut.forEach(t => {
     const items = typeof t.items === 'string' ? JSON.parse(t.items) : t.items;
-    items.forEach(it => { outCounts[it.itemName] = (outCounts[it.itemName] || 0) + Number(it.convertedQuantity); });
+    items.forEach(it => { 
+      outCounts[it.itemName] = (outCounts[it.itemName] || 0) + Number(it.convertedQuantity); 
+    });
   });
-  const topItemsOut = Object.entries(outCounts).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 3);
+
+  const topItemsOut = Object.entries(outCounts)
+    .map(([name, total]) => ({ name, total }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 3);
+
   return {
     totalItems: inv.filter(i => i.status === 'ACTIVE').length,
     totalStock: inv.reduce((a, b) => a + Number(b.stock), 0),

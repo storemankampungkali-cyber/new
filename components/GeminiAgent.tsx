@@ -1,6 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { GoogleGenAI, Chat } from "@google/genai";
 import { InventoryItem } from '../types';
 
 interface Message {
@@ -10,11 +10,14 @@ interface Message {
 
 const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) => {
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Halo! Saya adalah ProStock Intelligence Agent. Bagaimana saya bisa membantu Anda mengoptimalkan inventaris hari ini?' }
+    { role: 'assistant', content: 'Halo! Saya ProStock Intelligence. Ada yang bisa saya bantu hari ini? Saya bisa membantu analisis stok gudang maupun menjawab pertanyaan umum lainnya.' }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Keep track of the chat session
+  const chatRef = useRef<Chat | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -22,9 +25,39 @@ const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) =>
     }
   }, [messages]);
 
+  // Summarize inventory for the AI to keep context light and fast
+  const inventorySummary = useMemo(() => {
+    return inventory.map(item => ({
+      name: item.name,
+      stock: item.stock,
+      unit: item.defaultUnit,
+      category: item.category,
+      status: item.status
+    }));
+  }, [inventory]);
+
+  // Initialize or re-initialize chat when inventory changes
+  useEffect(() => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    chatRef.current = ai.chats.create({
+      model: 'gemini-3-flash-preview',
+      config: {
+        systemInstruction: `Anda adalah ProStock Intelligence, asisten AI kelas dunia yang serba bisa. 
+        Anda memiliki akses real-time ke data inventaris berikut: ${JSON.stringify(inventorySummary)}.
+        
+        Tugas Anda:
+        1. Menjadi asisten general yang bisa menjawab pertanyaan apa pun (pengetahuan umum, coding, tips bisnis, dll).
+        2. Menjadi pakar logistik yang cerdas saat ditanya mengenai stok gudang ProStock.
+        3. Gunakan Bahasa Indonesia yang ramah, profesional, dan ringkas.
+        4. Jika ditanya tentang stok, berikan data spesifik dari konteks yang diberikan.
+        5. Selalu berikan saran proaktif jika Anda melihat stok ada yang kritis atau menipis.`,
+      },
+    });
+  }, [inventorySummary]);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isTyping) return;
+    if (!input.trim() || isTyping || !chatRef.current) return;
 
     const userMessage = input.trim();
     setInput('');
@@ -32,33 +65,16 @@ const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) =>
     setIsTyping(true);
 
     try {
-      // Fix: Create GoogleGenAI instance right before making an API call to ensure it always uses the most up-to-date API key.
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = `
-        You are a world-class Supply Chain Consultant. 
-        Context: You have access to the current inventory status of ProStock System.
-        Current Inventory Data: ${JSON.stringify(inventory)}
-        
-        User Query: ${userMessage}
-        
-        Rules:
-        1. Be professional, concise, and data-driven.
-        2. If asked about stock, refer specifically to the provided data.
-        3. Offer actionable advice (e.g., "Anda harus segera restock X karena sisa Y").
-        4. Use Indonesian language by default unless the user uses English.
-        5. Format your response with markdown if needed for clarity.
-      `;
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-      });
-
-      // Fix: Access .text property directly, do not call it as a method.
-      const result = response.text || "Maaf, saya mengalami kendala teknis saat memproses data.";
+      const response = await chatRef.current.sendMessage({ message: userMessage });
+      const result = response.text || "Maaf, saya tidak dapat merumuskan jawaban saat ini.";
+      
       setMessages(prev => [...prev, { role: 'assistant', content: result }]);
-    } catch (err) {
-      setMessages(prev => [...prev, { role: 'assistant', content: "Sistem AI sedang tidak tersedia. Mohon coba lagi beberapa saat." }]);
+    } catch (err: any) {
+      console.error("Gemini Chat Error:", err);
+      let errorMsg = "Sistem AI sedang sibuk. Mohon coba lagi beberapa saat.";
+      if (err.message?.includes("API_KEY")) errorMsg = "Konfigurasi API Key tidak valid.";
+      
+      setMessages(prev => [...prev, { role: 'assistant', content: errorMsg }]);
     } finally {
       setIsTyping(false);
     }
@@ -73,25 +89,25 @@ const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) =>
         {/* Chat Header */}
         <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/5 backdrop-blur-md relative z-10">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-500/30">
+            <div className="w-12 h-12 bg-gradient-to-tr from-indigo-600 to-violet-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-indigo-500/30">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
             </div>
             <div>
-              <h3 className="font-black text-white tracking-tight">Consultant Gemini 3.0</h3>
+              <h3 className="font-black text-white tracking-tight">ProStock Intelligence</h3>
               <div className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Neural Engine Online</span>
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">Active Neural Link</span>
               </div>
             </div>
           </div>
           <div className="text-right hidden sm:block">
-            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Inventory Context</p>
-            <p className="text-xs font-bold text-slate-300">{inventory.length} Global Nodes Linked</p>
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Model Engine</p>
+            <p className="text-xs font-bold text-slate-300">Gemini 3 Flash (Real-time)</p>
           </div>
         </div>
 
         {/* Message Window */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-hide relative z-10">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6 scrollbar-hide relative z-10">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fadeIn`}>
               <div className={`max-w-[85%] px-6 py-4 rounded-[2rem] text-sm leading-relaxed shadow-lg ${
@@ -104,7 +120,7 @@ const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) =>
             </div>
           ))}
           {isTyping && (
-            <div className="flex justify-start animate-pulse">
+            <div className="flex justify-start">
               <div className="bg-slate-800/80 px-6 py-4 rounded-[2rem] rounded-tl-none border border-white/5 flex items-center gap-2">
                 <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce"></div>
                 <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
@@ -120,7 +136,7 @@ const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) =>
             <input 
               type="text" 
               className="w-full pl-6 pr-16 py-5 bg-slate-900 border border-white/10 rounded-[2.5rem] outline-none focus:ring-4 focus:ring-indigo-500/20 text-white placeholder-slate-600 transition-all font-medium"
-              placeholder="Tanyakan status stok, rekomendasi restock, atau analisis data..."
+              placeholder="Tanyakan apa saja..."
               value={input}
               onChange={e => setInput(e.target.value)}
             />
@@ -140,7 +156,7 @@ const GeminiAgent: React.FC<{ inventory: InventoryItem[] }> = ({ inventory }) =>
       </div>
       
       <p className="text-center mt-6 text-[10px] font-black text-slate-600 uppercase tracking-widest">
-        AI analysis is based on real-time database snapshots. Verify critical transactions manually.
+        Powered by Google Gemini 3 Flash • General Purpose Intelligence
       </p>
     </div>
   );
