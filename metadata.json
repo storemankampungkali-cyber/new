@@ -1,0 +1,7 @@
+{
+  "name": "ProStock GAS Inventory",
+  "description": "A world-class inventory management system using React, Tailwind, and Google Sheets as a database via Apps Script. Features RBAC, real-time dashboards, and AI-driven insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
