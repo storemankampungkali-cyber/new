@@ -9,12 +9,12 @@ export interface User {
   username: string;
   name: string;
   role: UserRole;
-  password?: string; // Optional for login, required for admin management
+  password?: string;
 }
 
 export interface UnitOption {
   name: string;
-  factor: number; // Factor to convert to base unit
+  factor: number;
   isDefault: boolean;
 }
 
@@ -27,7 +27,15 @@ export interface InventoryItem {
   minStock: number;
   price: number;
   defaultUnit: string;
-  altUnits?: UnitOption[]; // Up to 2 alt units
+  // New Structure
+  altUnit1?: string;
+  conv1?: number;
+  altUnit2?: string;
+  conv2?: number;
+  altUnit3?: string;
+  conv3?: number;
+  initialStock: number;
+  status: 'ACTIVE' | 'INACTIVE';
 }
 
 export interface Supplier {
@@ -62,9 +70,9 @@ export interface TransactionItem {
 }
 
 export interface OpnameItem extends TransactionItem {
-  systemStock: number; // Stock in system at time of opname (in base units)
-  physicalStock: number; // Stock counted physically (in base units)
-  difference: number; // systemStock - physicalStock
+  systemStock: number;
+  physicalStock: number;
+  difference: number;
 }
 
 export interface TransactionIn {
@@ -112,7 +120,7 @@ export interface HistoricalStockReport {
   openingStock: number;
   totalIn: number;
   totalOut: number;
-  totalAdjustment: number; // From Opname
+  totalAdjustment: number;
   closingStock: number;
   movements: Transaction[];
 }

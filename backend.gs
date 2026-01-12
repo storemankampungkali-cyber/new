@@ -1,7 +1,6 @@
 
 /**
  * ProStock Enterprise - Google Apps Script Backend API
- * Handles all requests from the Vercel Frontend.
  */
 
 const SS = SpreadsheetApp.getActiveSpreadsheet();
@@ -15,14 +14,14 @@ const SHEETS = {
   LOGS: 'Logs'
 };
 
-/**
- * Setup Database Otomatis
- * Jalankan fungsi ini sekali dari editor Apps Script
- */
 function setupDatabase() {
   const structure = {
     [SHEETS.USERS]: ['id', 'username', 'name', 'role', 'password'],
-    [SHEETS.INVENTORY]: ['id', 'sku', 'name', 'category', 'stock', 'minStock', 'price', 'defaultUnit', 'altUnits'],
+    [SHEETS.INVENTORY]: [
+      'id', 'sku', 'name', 'category', 'stock', 'minStock', 'price', 
+      'defaultUnit', 'altUnit1', 'conv1', 'altUnit2', 'conv2', 'altUnit3', 'conv3', 
+      'initialStock', 'status'
+    ],
     [SHEETS.SUPPLIERS]: ['id', 'name', 'contactPerson', 'phone', 'email', 'address'],
     [SHEETS.TRANSACTIONS_IN]: ['id', 'date', 'supplier', 'poNumber', 'deliveryNote', 'items', 'photos', 'timestamp', 'user'],
     [SHEETS.TRANSACTIONS_OUT]: ['id', 'date', 'customer', 'items', 'timestamp', 'user'],
@@ -40,18 +39,14 @@ function setupDatabase() {
     sheet.setFrozenRows(1);
   });
 
-  // Create default admin if empty
   const userSheet = SS.getSheetByName(SHEETS.USERS);
   if (userSheet.getLastRow() === 1) {
     userSheet.appendRow(['1', 'admin', 'Root Admin', 'ADMIN', 'admin123']);
   }
   
-  return "Database Setup Complete!";
+  return "Database Setup Updated with Multi-Unit Support!";
 }
 
-/**
- * API Router
- */
 function doPost(e) {
   let response;
   try {
@@ -60,70 +55,32 @@ function doPost(e) {
     const payload = data.payload || {};
 
     switch (action) {
-      case 'LOGIN':
-        response = handleLogin(payload.username, payload.password);
-        break;
-      case 'GET_INVENTORY':
-        response = getTableData(SHEETS.INVENTORY);
-        break;
-      case 'UPDATE_ITEM':
-        response = upsertRow(SHEETS.INVENTORY, 'id', payload.item, payload.actor, 'ITEM');
-        break;
-      case 'DELETE_ITEM':
-        response = deleteRow(SHEETS.INVENTORY, 'id', payload.id, payload.actor, 'ITEM');
-        break;
-      case 'GET_SUPPLIERS':
-        response = getTableData(SHEETS.SUPPLIERS);
-        break;
-      case 'UPDATE_SUPPLIER':
-        response = upsertRow(SHEETS.SUPPLIERS, 'id', payload.supplier, payload.actor, 'SUPPLIER');
-        break;
-      case 'DELETE_SUPPLIER':
-        response = deleteRow(SHEETS.SUPPLIERS, 'id', payload.id, payload.actor, 'SUPPLIER');
-        break;
-      case 'GET_USERS':
-        response = getTableData(SHEETS.USERS);
-        break;
-      case 'UPDATE_USER':
-        response = upsertRow(SHEETS.USERS, 'id', payload.user, payload.actor, 'USER');
-        break;
-      case 'DELETE_USER':
-        response = deleteRow(SHEETS.USERS, 'id', payload.id, payload.actor, 'USER');
-        break;
-      case 'SAVE_STOCK_IN':
-        response = handleStockIn(payload);
-        break;
-      case 'SAVE_STOCK_OUT':
-        response = handleStockOut(payload);
-        break;
-      case 'SAVE_OPNAME':
-        response = handleOpname(payload);
-        break;
-      case 'GET_DASHBOARD_STATS':
-        response = getDashboardStats();
-        break;
-      case 'GET_LOGS':
-        response = getTableData(SHEETS.LOGS);
-        break;
-      case 'SEARCH_ITEMS':
-        response = searchItems(payload.query);
-        break;
-      default:
-        throw new Error("Action not found: " + action);
+      case 'LOGIN': response = handleLogin(payload.username, payload.password); break;
+      case 'GET_INVENTORY': response = getTableData(SHEETS.INVENTORY); break;
+      case 'UPDATE_ITEM': response = upsertRow(SHEETS.INVENTORY, 'id', payload.item, payload.actor, 'ITEM'); break;
+      case 'DELETE_ITEM': response = deleteRow(SHEETS.INVENTORY, 'id', payload.id, payload.actor, 'ITEM'); break;
+      case 'GET_SUPPLIERS': response = getTableData(SHEETS.SUPPLIERS); break;
+      case 'UPDATE_SUPPLIER': response = upsertRow(SHEETS.SUPPLIERS, 'id', payload.supplier, payload.actor, 'SUPPLIER'); break;
+      case 'DELETE_SUPPLIER': response = deleteRow(SHEETS.SUPPLIERS, 'id', payload.id, payload.actor, 'SUPPLIER'); break;
+      case 'GET_USERS': response = getTableData(SHEETS.USERS); break;
+      case 'UPDATE_USER': response = upsertRow(SHEETS.USERS, 'id', payload.user, payload.actor, 'USER'); break;
+      case 'DELETE_USER': response = deleteRow(SHEETS.USERS, 'id', payload.id, payload.actor, 'USER'); break;
+      case 'SAVE_STOCK_IN': response = handleStockIn(payload); break;
+      case 'SAVE_STOCK_OUT': response = handleStockOut(payload); break;
+      case 'SAVE_OPNAME': response = handleOpname(payload); break;
+      case 'GET_DASHBOARD_STATS': response = getDashboardStats(); break;
+      case 'GET_LOGS': response = getTableData(SHEETS.LOGS); break;
+      case 'SEARCH_ITEMS': response = searchItems(payload.query); break;
+      default: throw new Error("Action not found: " + action);
     }
-
     return createJsonResponse({ success: true, data: response });
   } catch (err) {
     return createJsonResponse({ success: false, error: err.message });
   }
 }
 
-/**
- * Helpers
- */
 function createJsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
 
 function getTableData(sheetName) {
@@ -135,7 +92,6 @@ function getTableData(sheetName) {
     let obj = {};
     headers.forEach((h, i) => {
       let val = row[i];
-      // Auto-parse JSON strings for items/altUnits
       if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
         try { val = JSON.parse(val); } catch(e) {}
       }
@@ -143,6 +99,17 @@ function getTableData(sheetName) {
     });
     return obj;
   });
+}
+
+function searchItems(query) {
+  const items = getTableData(SHEETS.INVENTORY);
+  const q = query.toLowerCase();
+  return items.filter(item => 
+    item.status === 'ACTIVE' && (
+      item.name.toLowerCase().includes(q) || 
+      item.sku.toLowerCase().includes(q)
+    )
+  );
 }
 
 function handleLogin(username, password) {
@@ -159,7 +126,6 @@ function upsertRow(sheetName, idKey, data, actor, label) {
   const headers = values[0];
   const idIdx = headers.indexOf(idKey);
   
-  // Format data for sheet
   const rowData = headers.map(h => {
     let val = data[h];
     if (typeof val === 'object' && val !== null) return JSON.stringify(val);
@@ -175,7 +141,6 @@ function upsertRow(sheetName, idKey, data, actor, label) {
       }
     }
   } else {
-    // Generate ID if missing
     data[idKey] = Utilities.getUuid().split('-')[0].toUpperCase();
     rowData[idIdx] = data[idKey];
   }
@@ -194,7 +159,6 @@ function deleteRow(sheetName, idKey, id, actor, label) {
   const values = sheet.getDataRange().getValues();
   const headers = values[0];
   const idIdx = headers.indexOf(idKey);
-  
   for (let i = 1; i < values.length; i++) {
     if (values[i][idIdx] == id) {
       sheet.deleteRow(i + 1);
@@ -214,7 +178,6 @@ function handleStockIn(tx) {
     const headers = invData[0];
     const idIdx = headers.indexOf('id');
     const stockIdx = headers.indexOf('stock');
-
     tx.items.forEach(it => {
       for (let i = 1; i < invData.length; i++) {
         if (invData[i][idIdx] == it.itemId) {
@@ -224,25 +187,11 @@ function handleStockIn(tx) {
         }
       }
     });
-
     const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_IN);
-    txSheet.appendRow([
-      'TXI-' + Date.now(),
-      tx.date,
-      tx.supplier,
-      tx.poNumber,
-      tx.deliveryNote,
-      JSON.stringify(tx.items),
-      JSON.stringify(tx.photos || []),
-      new Date(),
-      tx.user
-    ]);
-
+    txSheet.appendRow(['TXI-' + Date.now(), tx.date, tx.supplier, tx.poNumber, tx.deliveryNote, JSON.stringify(tx.items), JSON.stringify(tx.photos || []), new Date(), tx.user]);
     logActivity(tx.user, 'STOCK_IN', tx.poNumber);
     return true;
-  } finally {
-    lock.releaseLock();
-  }
+  } finally { lock.releaseLock(); }
 }
 
 function handleStockOut(tx) {
@@ -254,7 +203,6 @@ function handleStockOut(tx) {
     const headers = invData[0];
     const idIdx = headers.indexOf('id');
     const stockIdx = headers.indexOf('stock');
-
     tx.items.forEach(it => {
       for (let i = 1; i < invData.length; i++) {
         if (invData[i][idIdx] == it.itemId) {
@@ -265,22 +213,11 @@ function handleStockOut(tx) {
         }
       }
     });
-
     const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OUT);
-    txSheet.appendRow([
-      'TXO-' + Date.now(),
-      tx.date,
-      tx.customer,
-      JSON.stringify(tx.items),
-      new Date(),
-      tx.user
-    ]);
-
+    txSheet.appendRow(['TXO-' + Date.now(), tx.date, tx.customer, JSON.stringify(tx.items), new Date(), tx.user]);
     logActivity(tx.user, 'STOCK_OUT', tx.customer);
     return true;
-  } finally {
-    lock.releaseLock();
-  }
+  } finally { lock.releaseLock(); }
 }
 
 function handleOpname(op) {
@@ -288,7 +225,6 @@ function handleOpname(op) {
   const invData = invSheet.getDataRange().getValues();
   const idIdx = invData[0].indexOf('id');
   const stockIdx = invData[0].indexOf('stock');
-
   op.items.forEach(it => {
     for (let i = 1; i < invData.length; i++) {
       if (invData[i][idIdx] == it.itemId) {
@@ -297,7 +233,6 @@ function handleOpname(op) {
       }
     }
   });
-
   const txSheet = SS.getSheetByName(SHEETS.TRANSACTIONS_OPNAME);
   txSheet.appendRow(['SOP-' + Date.now(), op.date, JSON.stringify(op.items), new Date(), op.user]);
   logActivity(op.user, 'OPNAME', op.date);
@@ -309,23 +244,15 @@ function getDashboardStats() {
   const txIn = getTableData(SHEETS.TRANSACTIONS_IN);
   const txOut = getTableData(SHEETS.TRANSACTIONS_OUT);
   const today = new Date().toISOString().split('T')[0];
-
-  const lowStockList = inv.filter(i => i.stock <= i.minStock);
+  const lowStockList = inv.filter(i => i.status === 'ACTIVE' && i.stock <= i.minStock);
   const outCounts = {};
   txOut.forEach(t => {
     const items = typeof t.items === 'string' ? JSON.parse(t.items) : t.items;
-    items.forEach(it => {
-      outCounts[it.itemName] = (outCounts[it.itemName] || 0) + Number(it.convertedQuantity);
-    });
+    items.forEach(it => { outCounts[it.itemName] = (outCounts[it.itemName] || 0) + Number(it.convertedQuantity); });
   });
-
-  const topItemsOut = Object.entries(outCounts)
-    .map(([name, total]) => ({ name, total }))
-    .sort((a, b) => b.total - a.total)
-    .slice(0, 3);
-
+  const topItemsOut = Object.entries(outCounts).map(([name, total]) => ({ name, total })).sort((a, b) => b.total - a.total).slice(0, 3);
   return {
-    totalItems: inv.length,
+    totalItems: inv.filter(i => i.status === 'ACTIVE').length,
     totalStock: inv.reduce((a, b) => a + Number(b.stock), 0),
     lowStockItems: lowStockList.length,
     transactionsInToday: txIn.filter(t => t.date == today).length,

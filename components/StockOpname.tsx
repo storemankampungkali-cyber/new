@@ -142,10 +142,15 @@ const StockOpnameModule: React.FC<StockOpnameProps> = ({ user }) => {
                   >
                     {selectedItem.defaultUnit}
                   </button>
-                  {selectedItem.altUnits?.map((u, i) => (
+                  {/* FIX: Manually check altUnit1, altUnit2, altUnit3 instead of undefined altUnits property */}
+                  {[
+                    { name: selectedItem.altUnit1, factor: selectedItem.conv1 },
+                    { name: selectedItem.altUnit2, factor: selectedItem.conv2 },
+                    { name: selectedItem.altUnit3, factor: selectedItem.conv3 }
+                  ].filter(u => u.name && u.factor).map((u, i) => (
                     <button 
                       key={i}
-                      onClick={() => setActiveUnit(u)}
+                      onClick={() => setActiveUnit({ name: u.name!, factor: u.factor!, isDefault: false })}
                       className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeUnit?.name === u.name ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                     >
                       {u.name}
@@ -230,7 +235,7 @@ const StockOpnameModule: React.FC<StockOpnameProps> = ({ user }) => {
                 </table>
               ) : (
                 <div className="h-full flex flex-col items-center justify-center p-20 text-slate-600 text-center space-y-4 opacity-40">
-                  <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                  <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
                   <p className="font-bold text-xs uppercase tracking-widest">Awaiting Physical Audit Entry</p>
                 </div>
               )}

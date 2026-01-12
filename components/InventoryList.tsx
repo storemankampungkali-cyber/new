@@ -65,7 +65,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
         
         {userRole === UserRole.ADMIN && (
           <button 
-            onClick={() => { setEditingItem({ stock: 0, minStock: 0, price: 0, defaultUnit: 'Pcs' }); setIsModalOpen(true); }}
+            onClick={() => { setEditingItem({ stock: 0, initialStock: 0, minStock: 0, price: 0, defaultUnit: 'Pcs', status: 'ACTIVE' }); setIsModalOpen(true); }}
             className="w-full md:w-auto px-10 py-4 bg-indigo-600 text-white rounded-[1.5rem] hover:bg-indigo-500 shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-3 transition-all active:scale-95 font-bold"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" /></svg>
@@ -82,7 +82,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Resource Profile</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Classification</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Quantities</th>
-                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Valuation</th>
+                <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Status</th>
                 <th className="px-8 py-5 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em] text-right">Ops</th>
               </tr>
             </thead>
@@ -92,7 +92,7 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                   <td colSpan={5} className="px-8 py-20 text-center text-slate-500 font-bold uppercase tracking-widest animate-pulse">Syncing Master Nodes...</td>
                 </tr>
               ) : filteredItems.length > 0 ? filteredItems.map((item) => (
-                <tr key={item.id} className="hover:bg-white/[0.02] transition-colors group">
+                <tr key={item.id} className={`hover:bg-white/[0.02] transition-colors group ${item.status === 'INACTIVE' ? 'opacity-50' : ''}`}>
                   <td className="px-8 py-6">
                     <div className="font-bold text-white group-hover:text-indigo-400 transition-colors">{item.name}</div>
                     <div className="text-[10px] text-slate-500 font-black tracking-widest uppercase mt-1">SKU: {item.sku}</div>
@@ -106,15 +106,11 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                     <div className={`text-lg font-black tracking-tighter ${item.stock <= item.minStock ? 'text-rose-500' : 'text-slate-200'}`}>
                       {item.stock} <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest">{item.defaultUnit}</span>
                     </div>
-                    {item.stock <= item.minStock && (
-                      <div className="flex items-center gap-1.5 mt-1 text-[9px] font-black text-rose-500 uppercase tracking-widest">
-                         <span className="w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
-                         Deficiency Alert
-                      </div>
-                    )}
                   </td>
-                  <td className="px-8 py-6 text-sm font-bold text-slate-400">
-                    USD {item.price.toLocaleString()}
+                  <td className="px-8 py-6">
+                    <span className={`px-2 py-1 rounded text-[8px] font-black uppercase tracking-widest border ${item.status === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-slate-800 text-slate-500 border-white/5'}`}>
+                      {item.status}
+                    </span>
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex justify-end gap-3">
@@ -147,24 +143,24 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-6 z-[100] animate-fadeIn">
-          <div className="glass-card rounded-[3rem] w-full max-w-lg p-10 border border-white/10 shadow-3xl animate-scaleUp">
-            <h3 className="text-3xl font-black text-white tracking-tighter mb-10">
+          <div className="glass-card rounded-[3rem] w-full max-w-2xl p-10 border border-white/10 shadow-3xl animate-scaleUp overflow-y-auto max-h-[90vh] scrollbar-hide">
+            <h3 className="text-3xl font-black text-white tracking-tighter mb-8">
               {editingItem?.id ? 'Adjust Profile' : 'Register Node'}
             </h3>
             <form onSubmit={handleSave} className="space-y-6">
-              <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Entity Descriptor</label>
-                <input
-                  required
-                  className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white placeholder-slate-800 font-medium"
-                  placeholder="Official Name"
-                  value={editingItem?.name || ''}
-                  onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
-                />
-              </div>
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Serial Node (SKU)</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nama Barang</label>
+                  <input
+                    required
+                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-medium"
+                    placeholder="Contoh: Kabel Power"
+                    value={editingItem?.name || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">SKU / Kode</label>
                   <input
                     required
                     className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white uppercase font-black tracking-widest"
@@ -172,8 +168,11 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                     onChange={(e) => setEditingItem({ ...editingItem, sku: e.target.value })}
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Node Class</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Kategori</label>
                   <input
                     required
                     className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white"
@@ -181,32 +180,85 @@ const InventoryList: React.FC<InventoryListProps> = ({ userRole }) => {
                     onChange={(e) => setEditingItem({ ...editingItem, category: e.target.value })}
                   />
                 </div>
-              </div>
-              <div className="grid grid-cols-3 gap-6">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Current</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Satuan Default</label>
                   <input
                     required
-                    type="number"
-                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-black"
-                    value={editingItem?.stock || 0}
-                    onChange={(e) => setEditingItem({ ...editingItem, stock: parseInt(e.target.value) })}
+                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white"
+                    placeholder="Pcs"
+                    value={editingItem?.defaultUnit || ''}
+                    onChange={(e) => setEditingItem({ ...editingItem, defaultUnit: e.target.value })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Minimum</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Status</label>
+                  <select 
+                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white"
+                    value={editingItem?.status}
+                    onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value as any })}
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="bg-white/5 p-6 rounded-3xl border border-white/5 space-y-4">
+                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Konversi Satuan Alternatif</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[9px] text-slate-500 uppercase font-black">Satuan Alt 1</label>
+                    <input className="w-full p-3 bg-slate-950 rounded-xl border border-white/5 text-white text-xs" placeholder="Pack" value={editingItem?.altUnit1 || ''} onChange={e => setEditingItem({...editingItem, altUnit1: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] text-slate-500 uppercase font-black">Konversi 1 (Isi)</label>
+                    <input type="number" className="w-full p-3 bg-slate-950 rounded-xl border border-white/5 text-white text-xs" placeholder="10" value={editingItem?.conv1 || ''} onChange={e => setEditingItem({...editingItem, conv1: parseFloat(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[9px] text-slate-500 uppercase font-black">Satuan Alt 2</label>
+                    <input className="w-full p-3 bg-slate-950 rounded-xl border border-white/5 text-white text-xs" placeholder="Box" value={editingItem?.altUnit2 || ''} onChange={e => setEditingItem({...editingItem, altUnit2: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] text-slate-500 uppercase font-black">Konversi 2 (Isi)</label>
+                    <input type="number" className="w-full p-3 bg-slate-950 rounded-xl border border-white/5 text-white text-xs" placeholder="50" value={editingItem?.conv2 || ''} onChange={e => setEditingItem({...editingItem, conv2: parseFloat(e.target.value)})} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[9px] text-slate-500 uppercase font-black">Satuan Alt 3</label>
+                    <input className="w-full p-3 bg-slate-950 rounded-xl border border-white/5 text-white text-xs" placeholder="Pallet" value={editingItem?.altUnit3 || ''} onChange={e => setEditingItem({...editingItem, altUnit3: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[9px] text-slate-500 uppercase font-black">Konversi 3 (Isi)</label>
+                    <input type="number" className="w-full p-3 bg-slate-950 rounded-xl border border-white/5 text-white text-xs" placeholder="500" value={editingItem?.conv3 || ''} onChange={e => setEditingItem({...editingItem, conv3: parseFloat(e.target.value)})} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-6">
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Stok Awal</label>
                   <input
-                    required
+                    type="number"
+                    className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-black"
+                    value={editingItem?.initialStock || 0}
+                    onChange={(e) => setEditingItem({ ...editingItem, initialStock: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Min Stok</label>
+                  <input
                     type="number"
                     className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-black"
                     value={editingItem?.minStock || 0}
-                    onChange={(e) => setEditingItem({ ...editingItem, minStock: parseInt(e.target.value) })}
+                    onChange={(e) => setEditingItem({ ...editingItem, minStock: parseFloat(e.target.value) })}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Value (USD)</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Harga (USD)</label>
                   <input
-                    required
                     type="number"
                     className="w-full px-6 py-4 bg-slate-900 border border-white/5 rounded-2xl outline-none focus:ring-4 focus:ring-indigo-500/20 text-white font-black"
                     value={editingItem?.price || 0}
