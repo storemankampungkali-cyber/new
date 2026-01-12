@@ -23,10 +23,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       if (user) {
         onLogin(user);
       } else {
-        setError('Verification failed. Incorrect access credentials.');
+        setError('Verifikasi gagal. Kredensial tidak ditemukan.');
       }
-    } catch (err) {
-      setError('Communication error with main server.');
+    } catch (err: any) {
+      // Menampilkan pesan error asli untuk mempermudah identifikasi masalah
+      setError(err.message || 'Error komunikasi dengan server.');
+      console.error("Login component error:", err);
     } finally {
       setLoading(false);
     }
@@ -45,7 +47,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         <form onSubmit={handleLogin} className="space-y-6">
           {error && (
-            <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-bold rounded-2xl text-center">
+            <div className="p-4 bg-rose-500/10 border border-rose-500/20 text-rose-400 text-[10px] font-bold rounded-2xl text-center uppercase tracking-widest leading-relaxed">
               {error}
             </div>
           )}

@@ -6,34 +6,46 @@ import { User, UserRole, InventoryItem, Transaction, TransactionType, DashboardS
  * Memfasilitasi komunikasi dengan Backend Google Apps Script.
  */
 
-// Helper untuk mengambil environment variable secara aman
-const getEnvVar = (name: string): string => {
-  if (typeof window !== 'undefined' && (window as any).process?.env?.[name]) {
-    return (window as any).process.env[name];
-  }
-  return (import.meta as any).env?.[name] || "";
-};
-
-// Mencoba mengambil dengan prefiks VITE_ atau tanpa prefiks
-const GAS_URL = getEnvVar('VITE_GAS_URL') || getEnvVar('GAS_URL');
-
 class GASService {
+  // Menggunakan getter agar URL selalu dievaluasi saat dipanggil, bukan saat modul dimuat
+  private getUrl(): string {
+    const env = (window as any).process?.env || {};
+    const metaEnv = (import.meta as any).env || {};
+    
+    const url = env.VITE_GAS_URL || 
+                env.GAS_URL || 
+                metaEnv.VITE_GAS_URL || 
+                metaEnv.GAS_URL || 
+                "";
+    
+    return url;
+  }
+
   private async callApi(action: string, payload: any = {}) {
-    if (!GAS_URL) {
-      const errorMsg = "VITE_GAS_URL tidak terkonfigurasi. Harap tambahkan ke Environment Variables di dashboard Vercel dan lakukan REDEPLOY.";
+    const url = this.getUrl();
+
+    if (!url) {
+      const errorMsg = "Konfigurasi VITE_GAS_URL tidak ditemukan. Pastikan Environment Variables sudah diatur di Vercel.";
       console.error(errorMsg);
       throw new Error(errorMsg);
     }
 
+    // Validasi format URL sederhana
+    if (!url.startsWith('https://script.google.com')) {
+      throw new Error("URL GAS tidak valid. Pastikan URL dimulai dengan https://script.google.com/.../exec");
+    }
+
     try {
-      const res = await fetch(GAS_URL, {
+      const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'text/plain;charset=utf-8', // Menggunakan text/plain untuk menghindari preflight CORS yang ketat pada GAS
+        },
         body: JSON.stringify({ action, payload })
       });
       
       if (!res.ok) {
-        throw new Error(`Server merespon dengan status: ${res.status}`);
+        throw new Error(`HTTP Error: ${res.status}`);
       }
 
       const json = await res.json();
@@ -41,9 +53,8 @@ class GASService {
       return json.data;
     } catch (e: any) {
       console.error("GAS API Call Failed:", e);
-      // Memberikan pesan yang lebih jelas untuk error jaringan umum
       if (e.message === 'Failed to fetch') {
-        throw new Error("Gagal menghubungi Google Apps Script. Pastikan URL benar dan izin Web App diatur ke 'Anyone'.");
+        throw new Error("Gagal terhubung ke Google Apps Script. Periksa koneksi internet atau pastikan Web App GAS sudah di-deploy ke 'Anyone'.");
       }
       throw e;
     }
