@@ -14,6 +14,7 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [supplier, setSupplier] = useState('');
   const [poNumber, setPoNumber] = useState('');
+  const [noForm, setNoForm] = useState('');
   const [deliveryNote, setDeliveryNote] = useState('');
   const [cart, setCart] = useState<TransactionItem[]>([]);
   const [availableUnits, setAvailableUnits] = useState<UnitOption[]>([]);
@@ -86,8 +87,8 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
   };
 
   const handleSubmit = async () => {
-    if (cart.length === 0 || !supplier || !poNumber) {
-      notify("Data belum lengkap: Supplier, No PO, dan Daftar Barang wajib ada.", "warning");
+    if (cart.length === 0 || !supplier || !noForm) {
+      notify("Data belum lengkap: Supplier, No. Form, dan Daftar Barang wajib ada.", "warning");
       return;
     }
 
@@ -97,6 +98,7 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
         date,
         supplier,
         poNumber,
+        noForm,
         deliveryNote,
         items: cart,
         photos,
@@ -105,6 +107,7 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
       setCart([]);
       setSupplier('');
       setPoNumber('');
+      setNoForm('');
       setDeliveryNote('');
       notify("Transaksi berhasil disimpan ke cloud.", "success");
       setTimeout(() => autocompleteRef.current?.focus(), 100);
@@ -116,22 +119,26 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 animate-fadeIn pb-12">
-      <div className="glass-card p-6 rounded-[2rem] border border-white/5 grid grid-cols-1 md:grid-cols-4 gap-5 shadow-lg">
+    <div className="max-w-7xl mx-auto space-y-6 animate-fadeIn pb-12">
+      <div className="glass-card p-6 rounded-[2rem] border border-white/5 grid grid-cols-1 md:grid-cols-5 gap-4 shadow-lg">
         <div className="space-y-1">
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tanggal Kedatangan</label>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tgl Kedatangan</label>
           <input type="date" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Vendor / Supplier</label>
-          <input type="text" placeholder="Global Logistics" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={supplier} onChange={e => setSupplier(e.target.value)} />
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nama Supplier</label>
+          <input type="text" placeholder="Nama Toko/PT" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={supplier} onChange={e => setSupplier(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Referensi No. PO</label>
-          <input type="text" placeholder="PO-2024-XXXX" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={poNumber} onChange={e => setPoNumber(e.target.value)} />
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">No. Form Penerimaan</label>
+          <input type="text" placeholder="SBT/RCV/XXXX" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={noForm} onChange={e => setNoForm(e.target.value)} />
         </div>
         <div className="space-y-1">
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Surat Jalan</label>
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">No. PO (Pemesanan)</label>
+          <input type="text" placeholder="SBT/PO/XXXX" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={poNumber} onChange={e => setPoNumber(e.target.value)} />
+        </div>
+        <div className="space-y-1">
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">No. SJ (Surat Jalan)</label>
           <input type="text" placeholder="SJ-XXXX" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} />
         </div>
       </div>
@@ -145,18 +152,18 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
             </h3>
             <div className="space-y-5">
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Cari Barang (Status: Active Only)</label>
-                <Autocomplete ref={autocompleteRef} onSelect={(item) => setCurrentItem(item)} placeholder="Mulai mengetik..." />
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Cari Kode/Nama Barang</label>
+                <Autocomplete ref={autocompleteRef} onSelect={(item) => setCurrentItem(item)} placeholder="Ketik Kode atau Nama..." />
                 {currentItem && (
                   <div className="mt-2 text-[10px] font-black text-indigo-400 bg-indigo-500/5 p-3 rounded-xl border border-indigo-500/20 flex justify-between items-center animate-fadeIn">
-                    <span>AKTIF: {currentItem.name}</span>
-                    <span className="opacity-50">STOK SAAT INI: {currentItem.stock}</span>
+                    <span>AKTIF: {currentItem.name} ({currentItem.id})</span>
+                    <span className="opacity-50">STOK: {currentItem.stock}</span>
                   </div>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Jumlah</label>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Jumlah (Input)</label>
                   <input ref={qtyRef} type="number" min="1" className="w-full p-4 bg-slate-900 border border-white/5 rounded-2xl text-white text-xl font-black outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-slate-800" value={currentQty} onChange={e => setCurrentQty(e.target.value === '' ? '' : parseInt(e.target.value))} onKeyDown={handleQtyKeyDown} placeholder="0" />
                 </div>
                 <div className="space-y-2">
@@ -167,12 +174,12 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Catatan Logistik</label>
-                <textarea className="w-full p-4 bg-slate-900 border border-white/5 rounded-2xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none" rows={2} value={currentRemarks} onChange={e => setCurrentRemarks(e.target.value)} placeholder="Keterangan..."></textarea>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Keterangan / Catatan</label>
+                <textarea className="w-full p-4 bg-slate-900 border border-white/5 rounded-2xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50 resize-none" rows={2} value={currentRemarks} onChange={e => setCurrentRemarks(e.target.value)} placeholder="Misal: Open Pettycash, Udah RI, dll..."></textarea>
               </div>
               <button onClick={addToCart} disabled={!currentItem} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-xl flex items-center justify-center gap-3 ${currentItem ? 'bg-indigo-600 text-white shadow-indigo-500/20 hover:bg-indigo-500 active:scale-95' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}>
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                Tambahkan Ke Antrian
+                Tambahkan Ke Manifest
               </button>
             </div>
           </div>
@@ -180,18 +187,18 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
         <div className="lg:col-span-7 space-y-6">
           <div className="glass-card rounded-[3rem] overflow-hidden flex flex-col min-h-[500px] border border-white/5 shadow-2xl">
             <div className="p-6 bg-white/5 border-b border-white/5 flex justify-between items-center">
-              <h3 className="font-bold text-white tracking-tight flex items-center gap-2">Antrian Barang Masuk</h3>
+              <h3 className="font-bold text-white tracking-tight flex items-center gap-2">Manifest Penerimaan</h3>
               <span className="bg-indigo-500/10 text-indigo-400 text-[10px] font-black px-4 py-1.5 rounded-full uppercase border border-indigo-500/20">{cart.length} Baris</span>
             </div>
-            <div className="flex-1">
+            <div className="flex-1 overflow-x-auto">
               {cart.length > 0 ? (
                 <table className="w-full text-left">
                   <thead className="text-[10px] font-black text-slate-500 uppercase bg-white/5">
                     <tr>
                       <th className="px-8 py-4">Informasi Barang</th>
                       <th className="px-8 py-4 text-center">Qty Input</th>
-                      <th className="px-8 py-4 text-center">Konversi (Pcs)</th>
-                      <th className="px-8 py-4 text-right">Opsi</th>
+                      <th className="px-8 py-4 text-center">Konversi Default</th>
+                      <th className="px-8 py-4 text-right">Hapus</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.03]">
@@ -199,7 +206,8 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
                       <tr key={idx} className="hover:bg-white/[0.01] transition-colors group">
                         <td className="px-8 py-5">
                           <div className="text-sm font-bold text-white">{item.itemName}</div>
-                          <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest mt-1 italic">{item.remarks}</div>
+                          <div className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest">{item.itemId}</div>
+                          <div className="text-[9px] text-slate-500 font-medium italic mt-1">{item.remarks}</div>
                         </td>
                         <td className="px-8 py-5 text-sm text-center font-bold text-slate-400">{item.quantity} {item.unit}</td>
                         <td className="px-8 py-5 text-sm text-center text-indigo-400 font-black">{item.convertedQuantity} Pcs</td>
@@ -214,14 +222,14 @@ const TransactionInModule: React.FC<TransactionInProps> = ({ user }) => {
                 </table>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-4 opacity-40 py-32">
-                  <p className="font-black text-xs uppercase tracking-[0.3em]">Antrian Kosong</p>
+                  <p className="font-black text-xs uppercase tracking-[0.3em]">Manifest Kosong</p>
                 </div>
               )}
             </div>
             {cart.length > 0 && (
               <div className="p-8 bg-white/5 border-t border-white/5">
                 <button disabled={loading} onClick={handleSubmit} className={`w-full py-5 rounded-[2rem] font-black text-lg tracking-tighter transition-all shadow-2xl flex items-center justify-center gap-4 ${loading ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20 active:scale-95'}`}>
-                  {loading ? '...' : 'SIMPAN PENERIMAAN BARANG'}
+                  {loading ? 'MENYIMPAN KE CLOUD...' : 'SIMPAN SEMUA BARANG MASUK'}
                 </button>
               </div>
             )}

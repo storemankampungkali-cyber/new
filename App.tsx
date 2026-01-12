@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import React, { useState, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
 import { User, UserRole, InventoryItem, Supplier, DashboardStats } from './types';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
@@ -17,7 +17,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import { gasService } from './services/gasService';
 
-// Global Data Context for Caching
+// Global Data Context
 interface DataContextType {
   inventory: InventoryItem[];
   suppliers: Supplier[];
@@ -75,7 +75,7 @@ const App: React.FC = () => {
   }, []);
 
   const refreshData = useCallback(async () => {
-    if (!user) return;
+    if (!user || dataLoading) return;
     setDataLoading(true);
     try {
       const [inv, sup, st] = await Promise.all([
@@ -86,9 +86,8 @@ const App: React.FC = () => {
       setInventory(inv);
       setSuppliers(sup);
       setStats(st);
-      notify('Cache synchronized with Google Sheets', 'success');
     } catch (err: any) {
-      notify('Sync Error: ' + err.message, 'error');
+      notify('Koneksi Gagal: ' + err.message, 'error');
     } finally {
       setDataLoading(false);
     }
@@ -106,36 +105,33 @@ const App: React.FC = () => {
     if (user) {
       refreshData();
     }
-  }, [user, refreshData]);
+  }, [user]);
 
   const handleLogin = (userData: User) => {
     setUser(userData);
     localStorage.setItem('prostock_session', JSON.stringify(userData));
-    notify(`Welcome back, ${userData.name}!`, 'success');
+    notify(`Selamat Datang, ${userData.name}!`, 'success');
   };
 
   const handleLogout = () => {
     setUser(null);
     localStorage.removeItem('prostock_session');
-    notify('Logged out successfully', 'info');
   };
 
-  if (authLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-slate-950">
-        <div className="relative">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div>
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="h-4 w-4 bg-indigo-500 rounded-sm animate-pulse"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Optimasi Konteks dengan useMemo agar tidak lag saat re-render
+  const dataContextValue = useMemo(() => ({
+    inventory,
+    suppliers,
+    stats,
+    refreshData,
+    loading: dataLoading
+  }), [inventory, suppliers, stats, refreshData, dataLoading]);
+
+  if (authLoading) return <div className="h-screen bg-slate-950 flex items-center justify-center text-indigo-500">Initializing...</div>;
 
   return (
     <NotificationContext.Provider value={{ notify }}>
-      <DataContext.Provider value={{ inventory, suppliers, stats, refreshData, loading: dataLoading }}>
+      <DataContext.Provider value={dataContextValue}>
         {!user ? (
           <Login onLogin={handleLogin} />
         ) : (
@@ -149,7 +145,7 @@ const App: React.FC = () => {
               onLogout={handleLogout} 
             />
             
-            <div className="flex-1 flex flex-col min-w-0 h-screen relative z-10 transition-all duration-500">
+            <div className="flex-1 flex flex-col min-w-0 h-screen relative z-10">
               <Header 
                 user={user} 
                 activeTab={activeTab} 
@@ -158,7 +154,6 @@ const App: React.FC = () => {
                 onRefresh={refreshData}
                 isRefreshing={dataLoading}
               />
-              
               <main className="p-4 md:p-8 flex-1 overflow-auto scrollbar-hide">
                 <div className="max-w-[1400px] mx-auto">
                   {activeTab === 'dashboard' && <Dashboard />}
@@ -176,36 +171,11 @@ const App: React.FC = () => {
               </main>
             </div>
 
-            {/* Toast Container */}
-            <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none">
+            {/* Toasts */}
+            <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3">
               {toasts.map(toast => (
-                <div 
-                  key={toast.id} 
-                  className={`pointer-events-auto min-w-[300px] max-w-md p-4 rounded-2xl shadow-2xl border animate-slideInRight flex items-center gap-3 glass-card ${
-                    toast.type === 'success' ? 'border-emerald-500/30 text-emerald-400' :
-                    toast.type === 'error' ? 'border-rose-500/30 text-rose-400' :
-                    toast.type === 'warning' ? 'border-amber-500/30 text-amber-400' : 'border-indigo-500/30 text-indigo-400'
-                  }`}
-                >
-                  <div className={`p-2 rounded-lg ${
-                    toast.type === 'success' ? 'bg-emerald-500/10' :
-                    toast.type === 'error' ? 'bg-rose-500/10' :
-                    toast.type === 'warning' ? 'bg-amber-500/10' : 'bg-indigo-500/10'
-                  }`}>
-                    {toast.type === 'success' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>}
-                    {toast.type === 'error' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>}
-                    {toast.type === 'warning' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>}
-                    {toast.type === 'info' && <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold">{toast.message}</p>
-                  </div>
-                  <button 
-                    onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
-                    className="p-1 opacity-50 hover:opacity-100 transition-opacity"
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"></path></svg>
-                  </button>
+                <div key={toast.id} className="p-4 rounded-2xl shadow-2xl border animate-slideInRight glass-card text-xs font-bold border-indigo-500/30 text-indigo-400">
+                  {toast.message}
                 </div>
               ))}
             </div>

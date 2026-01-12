@@ -4,7 +4,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ProStock Inventory System</title>
+    <title>ProStock Enterprise</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -24,82 +24,36 @@
         }
       }
     </script>
-    <!-- SheetJS for Excel Export -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
       body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         background-color: #0f172a;
         color: #f8fafc;
         margin: 0;
         overflow: hidden;
       }
       
-      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar { width: 4px; }
       ::-webkit-scrollbar-track { background: #0f172a; }
       ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
-      ::-webkit-scrollbar-thumb:hover { background: #475569; }
-
-      /* Rotating Cube Animation */
-      .cube-container {
-        width: 300px;
-        height: 300px;
-        perspective: 1000px;
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        z-index: -1;
-        opacity: 0.15;
-        pointer-events: none;
-      }
-
-      .cube {
-        width: 100%;
-        height: 100%;
-        position: relative;
-        transform-style: preserve-3d;
-        animation: rotateCube 20s infinite linear;
-      }
-
-      .cube-face {
-        position: absolute;
-        width: 300px;
-        height: 300px;
-        border: 2px solid #6366f1;
-        background: rgba(99, 102, 241, 0.05);
-        box-shadow: 0 0 20px rgba(99, 102, 241, 0.2);
-      }
-
-      .front  { transform: rotateY(0deg) translateZ(150px); }
-      .back   { transform: rotateY(180deg) translateZ(150px); }
-      .right  { transform: rotateY(90deg) translateZ(150px); }
-      .left   { transform: rotateY(-90deg) translateZ(150px); }
-      .top    { transform: rotateX(90deg) translateZ(150px); }
-      .bottom { transform: rotateX(-90deg) translateZ(150px); }
-
-      @keyframes rotateCube {
-        from { transform: rotateX(0deg) rotateY(0deg); }
-        to { transform: rotateX(360deg) rotateY(360deg); }
-      }
 
       @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
+        from { opacity: 0; transform: translateY(5px); }
         to { opacity: 1; transform: translateY(0); }
       }
 
       @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
+        from { transform: translateX(50%); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
       }
 
-      .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
-      .animate-slideInRight { animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+      .animate-slideInRight { animation: slideInRight 0.3s ease-out forwards; }
       
       .glass-card {
-        background: rgba(30, 41, 59, 0.7);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
+        background: rgba(30, 41, 59, 0.6);
+        backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.03);
       }
     </style>
     <script type="importmap">
@@ -114,18 +68,7 @@
     </script>
   </head>
   <body class="bg-slate-950 text-slate-200">
-    <div class="cube-container">
-      <div class="cube">
-        <div class="cube-face front"></div>
-        <div class="cube-face back"></div>
-        <div class="cube-face right"></div>
-        <div class="cube-face left"></div>
-        <div class="cube-face top"></div>
-        <div class="cube-face bottom"></div>
-      </div>
-    </div>
     <div id="root"></div>
-    <!-- MEMANGGIL ENTRY POINT REACT -->
     <script type="module" src="./index.tsx"></script>
   </body>
 </html>

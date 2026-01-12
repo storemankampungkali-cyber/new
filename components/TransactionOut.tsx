@@ -84,20 +84,20 @@ const TransactionOutModule: React.FC<TransactionOutProps> = ({ user }) => {
 
   const handleSubmit = async () => {
     if (cart.length === 0 || !customer) {
-      notify("Data belum lengkap: Nama Pelanggan dan Daftar Barang wajib diisi.", "warning");
+      notify("Data belum lengkap: Keterangan Global dan Daftar Barang wajib diisi.", "warning");
       return;
     }
     setLoading(true);
     try {
       await gasService.saveTransactionOut({
         date,
-        customer,
+        customer, // KeteranganGlobal di backend
         items: cart,
         user: user.username
       });
       setCart([]);
       setCustomer('');
-      notify("Pengeluaran barang berhasil diproses.", "success");
+      notify("Pengeluaran barang berhasil diproses ke cloud.", "success");
       setTimeout(() => autocompleteRef.current?.focus(), 100);
     } catch (err: any) {
       notify(`Gagal: ${err.message}`, "error");
@@ -114,14 +114,17 @@ const TransactionOutModule: React.FC<TransactionOutProps> = ({ user }) => {
           <input type="date" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={date} onChange={e => setDate(e.target.value)} />
         </div>
         <div className="flex-1 min-w-[280px] space-y-1">
-          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Nama Customer / Project</label>
-          <input type="text" placeholder="Project Alpha" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={customer} onChange={e => setCustomer(e.target.value)} />
+          <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Keterangan Global (misal: Shift / Lokasi)</label>
+          <input type="text" placeholder="SHIFT 2 KITCHEN / PROJECT X" className="w-full p-3 bg-slate-900/50 border border-white/5 rounded-xl text-white text-sm outline-none focus:ring-2 focus:ring-indigo-500/50" value={customer} onChange={e => setCustomer(e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         <div className="lg:col-span-5 space-y-6">
           <div className="glass-card p-8 rounded-[2.5rem] border border-white/5 h-fit space-y-8 shadow-2xl relative overflow-visible">
-            <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-3">Alokasi Barang</h3>
+            <h3 className="text-xl font-bold text-white tracking-tight flex items-center gap-3">
+               <span className="w-1.5 h-6 bg-rose-500 rounded-full"></span>
+               Alokasi Barang
+            </h3>
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Cari Barang</label>
@@ -131,7 +134,7 @@ const TransactionOutModule: React.FC<TransactionOutProps> = ({ user }) => {
                 <div className="space-y-6 animate-fadeIn">
                   <div className="p-5 bg-slate-900/50 rounded-2xl border border-white/5 flex justify-between items-center shadow-inner">
                     <div>
-                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Tersedia</p>
+                      <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] mb-1">Stok Saat Ini</p>
                       <p className="text-2xl font-black text-white">{selectedItem.stock} <span className="text-xs font-bold text-slate-600 uppercase">{selectedItem.defaultUnit}</span></p>
                     </div>
                   </div>
@@ -158,7 +161,7 @@ const TransactionOutModule: React.FC<TransactionOutProps> = ({ user }) => {
                     </div>
                     {validationError && <p className="text-[10px] text-rose-400 font-black uppercase tracking-widest mt-2">{validationError}</p>}
                   </div>
-                  <button onClick={addToCart} disabled={!!validationError || !inputQty || inputQty <= 0} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl transition-all ${!!validationError || !inputQty || inputQty <= 0 ? 'bg-slate-800 text-slate-600' : 'bg-rose-500 text-white'}`}>Alokasikan Ke Daftar</button>
+                  <button onClick={addToCart} disabled={!!validationError || !inputQty || inputQty <= 0} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl transition-all ${!!validationError || !inputQty || inputQty <= 0 ? 'bg-slate-800 text-slate-600' : 'bg-rose-500 text-white shadow-rose-500/20 active:scale-95'}`}>Masukkan Ke Manifest</button>
                 </div>
               )}
             </div>
@@ -168,7 +171,7 @@ const TransactionOutModule: React.FC<TransactionOutProps> = ({ user }) => {
           <div className="glass-card rounded-[3rem] overflow-hidden flex flex-col min-h-[500px] border border-white/5 shadow-2xl">
             <div className="p-6 bg-white/5 border-b border-white/5 flex justify-between items-center">
               <h3 className="text-lg font-bold text-white tracking-tight">Manifest Pengeluaran</h3>
-              <span className="bg-rose-500/10 text-rose-400 text-[10px] font-black px-4 py-1.5 rounded-full uppercase">{cart.length} Baris</span>
+              <span className="bg-rose-500/10 text-rose-400 text-[10px] font-black px-4 py-1.5 rounded-full uppercase border border-rose-500/20">{cart.length} Baris</span>
             </div>
             <div className="flex-1 overflow-x-auto">
               {cart.length > 0 ? (
@@ -181,26 +184,35 @@ const TransactionOutModule: React.FC<TransactionOutProps> = ({ user }) => {
                       <th className="px-8 py-4 text-right">Opsi</th>
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-white/[0.03]">
                     {cart.map((it, idx) => (
-                      <tr key={idx} className="hover:bg-white/[0.01]">
+                      <tr key={idx} className="hover:bg-white/[0.01] group">
                         <td className="px-8 py-5">
                           <div className="text-sm font-bold text-white">{it.itemName}</div>
+                          <div className="text-[9px] text-slate-500 font-bold uppercase tracking-widest">{it.itemId}</div>
                         </td>
                         <td className="px-8 py-5 text-center text-sm font-black text-slate-400">{it.quantity} {it.unit}</td>
                         <td className="px-8 py-5 text-center text-xs font-black text-rose-500">-{it.convertedQuantity} PCS</td>
-                        <td className="px-8 py-5 text-right"><button onClick={() => removeFromCart(idx)} className="text-rose-500">✕</button></td>
+                        <td className="px-8 py-5 text-right">
+                          <button onClick={() => removeFromCart(idx)} className="p-2 text-slate-600 hover:text-rose-500 transition-colors">
+                             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               ) : (
-                <div className="h-full flex items-center justify-center p-20 text-slate-600 opacity-40">Manifest Kosong</div>
+                <div className="flex-1 flex flex-col items-center justify-center p-20 text-slate-600 opacity-40 space-y-4">
+                   <p className="font-black text-xs uppercase tracking-widest">Belum Ada Barang Yang Dialokasikan</p>
+                </div>
               )}
             </div>
             {cart.length > 0 && (
-              <div className="p-8 border-t border-white/5">
-                <button onClick={handleSubmit} disabled={loading} className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black">PROSES PENGELUARAN</button>
+              <div className="p-8 bg-white/5 border-t border-white/5">
+                <button onClick={handleSubmit} disabled={loading} className={`w-full py-5 rounded-[2rem] font-black text-xl tracking-tighter transition-all shadow-2xl flex items-center justify-center gap-4 ${loading ? 'bg-slate-800 text-slate-600' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-500/20 active:scale-95'}`}>
+                  {loading ? 'MEMPROSES DATA...' : 'KONFIRMASI PENGELUARAN BARANG'}
+                </button>
               </div>
             )}
           </div>
